@@ -44,6 +44,8 @@
 
 #define FALLBACK_RW_LENGTH ((1ull << 31) - 1)
 
+#define RWF_UNCACHED        0x00000080
+
 /* Macros for testing file types. */
 #ifdef NO_UMASK
 #define FILE_MODE 0644
@@ -304,7 +306,7 @@ Sint64 efile_readv(efile_data_t *d, SysIOVec *iov, int iovlen) {
 
         /* writev(2) implies readv(2) */
 #ifdef HAVE_WRITEV
-        result = readv(u->fd, iov, MIN(IOV_MAX, iovlen));
+        result = preadv2(u->fd, iov, MIN(IOV_MAX, iovlen), -1, RWF_UNCACHED);
 
         /* Fall back to using read(2) if readv(2) reports that the combined
          * size of iov is greater than SSIZE_T_MAX. */
@@ -354,7 +356,7 @@ Sint64 efile_writev(efile_data_t *d, SysIOVec *iov, int iovlen) {
         }
 
 #ifdef HAVE_WRITEV
-        result = writev(u->fd, iov, MIN(IOV_MAX, iovlen));
+        result = pwritev2(u->fd, iov, MIN(IOV_MAX, iovlen), -1, RWF_UNCACHED);
 
         /* Fall back to using write(2) if writev(2) reports that the combined
          * size of iov is greater than SSIZE_T_MAX. */
@@ -414,7 +416,7 @@ Sint64 efile_preadv(efile_data_t *d, Sint64 offset, SysIOVec *iov, int iovlen) {
         }
 
 #if defined(HAVE_PREADV)
-        result = preadv(u->fd, iov, MIN(IOV_MAX, iovlen), offset);
+        result = preadv2(u->fd, iov, MIN(IOV_MAX, iovlen), offset, RWF_UNCACHED);
 #elif defined(HAVE_PREAD)
         result = pread(u->fd, iov->iov_base, iov->iov_len, offset);
 #else
@@ -470,7 +472,7 @@ Sint64 efile_pwritev(efile_data_t *d, Sint64 offset, SysIOVec *iov, int iovlen) 
         }
 
 #if defined(HAVE_PWRITEV)
-        result = pwritev(u->fd, iov, MIN(IOV_MAX, iovlen), offset);
+        result = pwritev2(u->fd, iov, MIN(IOV_MAX, iovlen), offset, RWF_UNCACHED);
 #elif defined(HAVE_PWRITE)
         result = pwrite(u->fd, iov->iov_base, iov->iov_len, offset);
 #else
