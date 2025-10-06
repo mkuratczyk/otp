@@ -678,6 +678,10 @@ static int db_member_hash(DbTable *tbl, Eterm key, Eterm *ret);
 static int db_get_element_hash(Process *p, DbTable *tbl, 
 			       Eterm key, int pos, Eterm *ret);
 
+static int db_get_elements_hash(Process *p, DbTable *tbl,
+                                Eterm key, int* indices,
+                                int indices_len, Eterm *ret);
+
 static int db_erase_object_hash(DbTable *tbl, Eterm object,Eterm *ret);
 
 static int db_slot_hash(Process *p, DbTable *tbl, 
@@ -857,6 +861,7 @@ DbTableMethod db_hash =
     db_put_hash,
     db_get_hash,
     db_get_element_hash,
+    db_get_elements_hash,
     db_member_hash,
     db_erase_hash,
     db_erase_object_hash,
@@ -1595,6 +1600,118 @@ static int db_get_element_hash(Process *p, DbTable *tbl,
 		Eterm* hp;
 		*ret = db_copy_element_from_ets(&tb->common, p, &b1->dbterm,
                                                 pos, &hp, 0);
+	    }
+	    retval = DB_ERROR_NONE;
+	    goto done;
+	}
+	b1 = b1->next;
+    }
+    retval = DB_ERROR_BADKEY;
+done:
+    RUNLOCK_HASH(lck);
+    return retval;
+}
+
+static int db_get_elements_hash(Process *p, DbTable *tbl,
+                                Eterm key, int* indices,
+                                int indices_len, Eterm *ret)
+{
+    DbTableHash *tb = &tbl->hash;
+    HashValue hval;
+    UWord ix;
+    HashDbTerm* b1;
+    erts_rwmtx_t* lck;
+    int retval;
+    int i;
+    
+    hval = MAKE_HASH(key);
+    lck = RLOCK_HASH(tb, hval);
+    ix = hash_to_ix(tb, hval);
+    b1 = BUCKET(tb, ix);
+
+    while(b1 != 0) {
+	if (has_live_key(tb,b1,key,hval)) {
+	    Uint arity = arityval(b1->dbterm.tpl[0]);
+	    
+	    /* Verify all positions are valid */
+	    for (i = 0; i < indices_len; i++) {
+		if (indices[i] > arity) {
+		    retval = DB_ERROR_BADITEM;
+		    goto done;
+		}
+	    }
+	    
+	    if (tb->common.status & (DB_BAG | DB_DUPLICATE_BAG)) {
+		HashDbTerm* b;
+		HashDbTerm* b2 = b1->next;
+		Eterm elem_list = NIL;
+
+		/* Verify positions for all matching keys */
+		while(b2 != NULL && has_key(tb,b2,key,hval)) {
+		    Uint arity2 = arityval(b2->dbterm.tpl[0]);
+		    if (!is_pseudo_deleted(b2)) {
+			for (i = 0; i < indices_len; i++) {
+			    if (indices[i] > arity2) {
+				retval = DB_ERROR_BADITEM;
+				goto done;
+			    }
+			}
+		    }
+		    b2 = b2->next;
+		}
+		
+		/* Build result list for bag tables */
+		b = b1;
+		b2 = b1->next;
+		while(b2 != NULL && has_key(tb,b2,key,hval)) {
+		    b2 = b2->next;
+		}
+		
+		while(b != b2) {
+		    if (!is_pseudo_deleted(b)) {
+			Eterm *hp;
+			Eterm *tpl_hp;
+			Eterm tuple_elems;
+			
+			/* Allocate tuple space + cons */
+			hp = HAlloc(p, indices_len + 1 + 2);
+			tpl_hp = hp;
+			tuple_elems = make_tuple(tpl_hp);
+			*tpl_hp++ = make_arityval(indices_len);
+			
+			/* Copy each element - db_copy_element_from_ets manages its own heap */
+			for (i = 0; i < indices_len; i++) {
+			    Eterm *elem_hp = NULL;
+			    Eterm elem_copy = db_copy_element_from_ets(&tb->common, p,
+				&b->dbterm, indices[i], &elem_hp, 0);
+			    *tpl_hp++ = elem_copy;
+			}
+			
+			/* Build cons cell for list */
+			elem_list = CONS(tpl_hp, tuple_elems, elem_list);
+		    }
+		    b = b->next;
+		}
+		*ret = elem_list;
+	    }
+	    else {
+		/* For set/ordered_set tables, build a tuple with the elements */
+		Eterm *hp;
+		Eterm *tpl_hp;
+		
+		/* Allocate space for tuple */
+		hp = HAlloc(p, indices_len + 1);
+		tpl_hp = hp;
+		*ret = make_tuple(tpl_hp);
+		*tpl_hp++ = make_arityval(indices_len);
+		
+		/* Copy each element - db_copy_element_from_ets manages its own heap */
+		for (i = 0; i < indices_len; i++) {
+		    Eterm *elem_hp = NULL;
+		    Eterm elem_copy = db_copy_element_from_ets(&tb->common, p,
+			&b1->dbterm, indices[i], &elem_hp, 0);
+		    *tpl_hp++ = elem_copy;
+		}
 	    }
 	    retval = DB_ERROR_NONE;
 	    goto done;

@@ -123,8 +123,11 @@ static int db_get_catree(Process *p, DbTable *tbl,
                          Eterm key,  Eterm *ret);
 static int db_member_catree(DbTable *tbl, Eterm key, Eterm *ret);
 static int db_get_element_catree(Process *p, DbTable *tbl,
-                                 Eterm key,int ndex,
-                                 Eterm *ret);
+                                Eterm key,int ndex,
+                                Eterm *ret);
+static int db_get_elements_catree(Process *p, DbTable *tbl,
+                                  Eterm key, int* indices,
+                                  int indices_len, Eterm *ret);
 static int db_erase_catree(DbTable *tbl, Eterm key, Eterm *ret);
 static int db_erase_object_catree(DbTable *tbl, Eterm object,Eterm *ret);
 static int db_slot_catree(Process *p, DbTable *tbl,
@@ -209,6 +212,7 @@ DbTableMethod db_catree =
     db_put_catree,
     db_get_catree,
     db_get_element_catree,
+    db_get_elements_catree,
     db_member_catree,
     db_erase_catree,
     db_erase_object_catree,
@@ -2045,6 +2049,20 @@ static int db_get_element_catree(Process *p, DbTable *tbl,
     int result = db_get_element_tree_common(p, &tb->common,
                                             node->u.base.root,
                                             key, ndex, ret, NULL);
+    runlock_base_node(node, tb);
+    return result;
+}
+
+static int db_get_elements_catree(Process *p, DbTable *tbl,
+                                  Eterm key, int* indices,
+                                  int indices_len, Eterm *ret)
+{
+    DbTableCATree *tb = &tbl->catree;
+    DbTableCATreeNode* node = find_rlock_valid_base_node(tb, key);
+    int result = db_get_elements_tree_common(p, &tb->common,
+                                             node->u.base.root,
+                                             key, indices, indices_len,
+                                             ret, NULL);
     runlock_base_node(node, tb);
     return result;
 }

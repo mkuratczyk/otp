@@ -1,0 +1,58 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║          ETS lookup_elements Performance Benchmark Results           ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+SCENARIO: RabbitMQ-like workload
+  • 21-field tuples (key + 20 data fields)
+  • 10 bytes per field
+  • Extract 3 fields (positions 7, 14, 19)
+  • 10,000 lookups on 10,000-record table
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                            RESULTS                                   │
+├──────────────────────────────────────────────────────────────────────┤
+│ Method 1: 3× lookup_element/3                                        │
+│   Time: 1,065 µs                                                     │
+│   Per lookup: 0.11 µs                                                │
+│                                                                      │
+│ Method 2: 1× lookup_elements/3  ⭐ WINNER                            │
+│   Time: 994 µs                                                       │
+│   Per lookup: 0.10 µs                                                │
+│   Speedup: 1.07× vs Method 1                                         │
+│   Speedup: 1.40× vs Method 3                                         │
+│                                                                      │
+│ Method 3: 1× lookup/2 + 3× element/2                                │
+│   Time: 1,388 µs                                                     │
+│   Per lookup: 0.14 µs                                                │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                      WHY lookup_elements WINS                        │
+├──────────────────────────────────────────────────────────────────────┤
+│ ✓ Single key hash (vs 3 hashes)                                     │
+│ ✓ Single lock acquisition (vs 3 locks)                              │
+│ ✓ Single bucket traversal (vs 3 traversals)                         │
+│ ✓ Only copies needed fields (vs entire 21-field tuple)              │
+│ ✓ 86% less memory copied (30 bytes vs 210 bytes)                    │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│                    PRODUCTION SCALE IMPACT                           │
+├──────────────────────────────────────────────────────────────────────┤
+│ At 100,000 lookups/second:                                           │
+│   • Saves 0.71 ms CPU/sec vs 3× lookup_element                      │
+│   • Saves 3.94 ms CPU/sec vs lookup + element                       │
+│                                                                      │
+│ At 1,000,000 lookups/second:                                         │
+│   • Saves 7.1 ms CPU/sec vs 3× lookup_element                       │
+│   • Saves 39.4 ms CPU/sec vs lookup + element                       │
+│   • Saves 180 MB/sec memory vs lookup + element                     │
+└──────────────────────────────────────────────────────────────────────┘
+
+RUN THE BENCHMARK:
+  cd /Users/mkuratczyk/workspace/otp
+  ./bin/escript performance_benchmark.erl
+
+SEE ALSO:
+  • PERFORMANCE_ANALYSIS.md - Detailed analysis
+  • HOW_TO_RUN_BENCHMARK.md - Customization guide

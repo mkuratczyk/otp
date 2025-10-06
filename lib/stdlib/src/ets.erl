@@ -288,7 +288,8 @@ Opaque continuation used by [`select/1,3`](`select/1`),
 -export([all/0, delete/1, delete/2, delete_all_objects/1,
          delete_object/2, first/1, first_lookup/1, give_away/3, info/1, info/2,
          insert/2, insert_new/2, is_compiled_ms/1, last/1, last_lookup/1, lookup/2,
-         lookup_element/3, lookup_element/4, match/1, match/2, match/3, match_object/1,
+         lookup_element/3, lookup_element/4, lookup_elements/3, lookup_elements/4,
+         match/1, match/2, match/3, match_object/1,
          match_object/2, match_object/3, match_spec_compile/1,
          match_spec_run_r/3, member/2, new/2, next/2, next_lookup/2, prev/2, prev_lookup/2,
          rename/2, safe_fixtable/2, select/1, select/2, select/3,
@@ -786,6 +787,64 @@ only when they _match_, holds for [`lookup_element/4`](`lookup_element/4`).
 
 lookup_element(_, _, _, _) ->
   erlang:nif_error(undef).
+
+-doc """
+For a table `Table` of type `set` or `ordered_set`, the function returns a
+tuple with the elements at the positions specified in `Positions` for the object
+with key `Key`.
+
+For tables of type `bag` or `duplicate_bag`, the function returns a list of
+tuples, where each tuple contains the elements at the positions specified in
+`Positions` for each object with key `Key`.
+
+If no object with key `Key` exists, the function fails with reason `badarg` and
+with exception information `badkey` in the extended error information.
+
+If any position in `Positions` is larger than the size of any tuple with a
+matching key, the function exits with reason `badarg`.
+
+The difference between `set`, `bag`, and `duplicate_bag` on one hand, and
+`ordered_set` on the other, regarding the fact that `ordered_set` view keys as
+equal when they _compare equal_ whereas the other table types regard them equal
+only when they _match_, holds for [`lookup_elements/3`](`lookup_elements/3`).
+""".
+-spec lookup_elements(Table, Key, Positions) -> Elems when
+      Table :: table(),
+      Key :: term(),
+      Positions :: [pos_integer()],
+      Elems :: tuple() | [tuple()].
+
+lookup_elements(_, _, _) ->
+    erlang:nif_error(undef).
+
+-doc """
+For a table `Table` of type `set` or `ordered_set`, the function returns a
+tuple with the elements at the positions specified in `Positions` for the object
+with key `Key`.
+
+For tables of type `bag` or `duplicate_bag`, the function returns a list of
+tuples, where each tuple contains the elements at the positions specified in
+`Positions` for each object with key `Key`.
+
+If no object with key `Key` exists, the function returns `Default`.
+
+If any position in `Positions` is larger than the size of any tuple with a
+matching key, the function exits with reason `badarg`.
+
+The difference between `set`, `bag`, and `duplicate_bag` on one hand, and
+`ordered_set` on the other, regarding the fact that `ordered_set` view keys as
+equal when they _compare equal_ whereas the other table types regard them equal
+only when they _match_, holds for [`lookup_elements/4`](`lookup_elements/4`).
+""".
+-spec lookup_elements(Table, Key, Positions, Default) -> Elems | Default when
+      Table :: table(),
+      Key :: term(),
+      Positions :: [pos_integer()],
+      Default :: term(),
+      Elems :: tuple() | [tuple()].
+
+lookup_elements(_, _, _, _) ->
+    erlang:nif_error(undef).
 
 -doc """
 Matches the objects in table `Table` against pattern `Pattern`.
