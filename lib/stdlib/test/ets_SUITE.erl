@@ -44,6 +44,7 @@
 	 tabfile_ext2/1, tabfile_ext3/1, tabfile_ext4/1, badfile/1]).
 -export([heavy_lookup/1, heavy_lookup_element/1, heavy_concurrent/1]).
 -export([lookup_element_mult/1, lookup_element_default/1]).
+-export([lookup_elements_mult/1, lookup_elements_default/1, heavy_lookup_elements/1]).
 -export([foldl_ordered/1, foldr_ordered/1, foldl/1, foldr/1, fold_empty/1,
          fold_badarg/1]).
 -export([t_delete_object/1, t_init_table/1, t_whitebox/1,
@@ -210,6 +211,7 @@ groups() ->
      {insert, [], [empty, badinsert]},
      {lookup, [], [badlookup, lookup_order]},
      {lookup_element, [], [lookup_element_mult, lookup_element_default]},
+     {lookup_elements, [], [lookup_elements_mult, lookup_elements_default]},
      {delete, [],
       [delete_elem, delete_tab, delete_large_tab,
        delete_large_named_table, evil_delete, table_leak,
@@ -222,7 +224,7 @@ groups() ->
       [tab2file, tab2file2, tabfile_ext1,
        tabfile_ext2, tabfile_ext3, tabfile_ext4, badfile]},
      {heavy, [],
-      [heavy_lookup, heavy_lookup_element, heavy_concurrent]},
+      [heavy_lookup, heavy_lookup_element, heavy_lookup_elements, heavy_concurrent]},
      {fold, [],
       [foldl_ordered, foldr_ordered, foldl, foldr,
        fold_empty, fold_badarg]},
@@ -4432,6 +4434,87 @@ lem_crash_3(T) ->
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+lookup_elements_default(Config) when is_list(Config) ->
+    EtsMem = etsmem(),
+
+    TabSet = ets_new(foo, [set]),
+    ets:insert(TabSet, {key, 42, "hello", 3.14}),
+    {42, "hello"} = ets:lookup_elements(TabSet, key, [2, 3], {13, "default"}),
+    {13, "default"} = ets:lookup_elements(TabSet, not_key, [2, 3], {13, "default"}),
+    {'EXIT',{badarg,_}} = catch ets:lookup_elements(TabSet, key, [5], {13}),
+    true = ets:delete(TabSet),
+
+    TabOrderedSet = ets_new(foo, [ordered_set]),
+    ets:insert(TabOrderedSet, {key, 42, "hello", 3.14}),
+    {42, "hello"} = ets:lookup_elements(TabOrderedSet, key, [2, 3], {13, "default"}),
+    {13, "default"} = ets:lookup_elements(TabOrderedSet, not_key, [2, 3], {13, "default"}),
+    {'EXIT',{badarg,_}} = catch ets:lookup_elements(TabOrderedSet, key, [5], {13}),
+    true = ets:delete(TabOrderedSet),
+
+    TabBag = ets_new(foo, [bag]),
+    ets:insert(TabBag, {key, 42, "hello"}),
+    ets:insert(TabBag, {key, 43, "world", 99}),
+    [{42, "hello"}, {43, "world"}] = ets:lookup_elements(TabBag, key, [2, 3], {13, "default"}),
+    {13, "default"} = ets:lookup_elements(TabBag, not_key, [2, 3], {13, "default"}),
+    {'EXIT',{badarg,_}} = catch ets:lookup_elements(TabBag, key, [4], {13}),
+    true = ets:delete(TabBag),
+
+    TabDuplicateBag = ets_new(foo, [duplicate_bag]),
+    ets:insert(TabDuplicateBag, {key, 42, "hello"}),
+    ets:insert(TabDuplicateBag, {key, 42, "hello"}),
+    ets:insert(TabDuplicateBag, {key, 43, "world", 99}),
+    [{42, "hello"}, {42, "hello"}, {43, "world"}] = 
+        ets:lookup_elements(TabDuplicateBag, key, [2, 3], {13, "default"}),
+    {13, "default"} = ets:lookup_elements(TabDuplicateBag, not_key, [2, 3], {13, "default"}),
+    {'EXIT',{badarg,_}} = catch ets:lookup_elements(TabDuplicateBag, key, [4], {13}),
+    true = ets:delete(TabDuplicateBag),
+
+    verify_etsmem(EtsMem).
+
+%% Test multiple return elements with lookup_elements.
+lookup_elements_mult(Config) when is_list(Config) ->
+    repeat_for_opts(fun lookup_elements_mult_do/1).
+
+lookup_elements_mult_do(Opts) ->
+    EtsMem = etsmem(),
+    T = ets_new(service, [bag, {keypos, 2} | Opts]),
+    D = lists:reverse(lem_data()),
+    lists:foreach(fun(X) -> ets:insert(T, X) end, D),
+    
+    %% Test basic lookup_elements with multiple positions
+    Result = ets:lookup_elements(T, 'eddie2@boromir', [2, 3, 4]),
+    [{_,{150,236,14,103}, httpd88}, {_,{150,236,14,103}, httpd80}] = Result,
+    
+    %% Test with single position
+    {_} = ets:lookup_elements(T, 'eddie2@boromir', [2]),
+    
+    %% Test with all positions
+    FullResult = ets:lookup_elements(T, 'eddie2@boromir', [1, 2, 3, 4, 5]),
+    2 = length(FullResult),
+    
+    %% Test with non-existing key
+    {'EXIT',{badarg,_}} = catch ets:lookup_elements(T, 'non_existing', [2, 3]),
+    
+    %% Test with empty positions list
+    {'EXIT',{badarg,_}} = catch ets:lookup_elements(T, 'eddie2@boromir', []),
+    
+    %% Test with invalid position
+    {'EXIT',{badarg,_}} = catch ets:lookup_elements(T, 'eddie2@boromir', [99]),
+    
+    %% Test with mixed valid/invalid positions
+    {'EXIT',{badarg,_}} = catch ets:lookup_elements(T, 'eddie2@boromir', [2, 99]),
+    
+    %% Test heap key
+    ets:insert(T, {0, "heap_key", data1, data2, data3}),
+    {_, data1, data2} = ets:lookup_elements(T, "heap_key", [2, 3, 4]),
+    
+    true = ets:delete(T),
+    verify_etsmem(EtsMem).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 %% Check delete of an element inserted in a `filled' table.
 delete_elem(Config) when is_list(Config) ->
@@ -6411,6 +6494,39 @@ do_lookup_element(Tab, N, M) ->
 		_ -> do_lookup_element(Tab, N-1, 1)
 	    end;
 	_ -> do_lookup_element(Tab, N, M+1)
+    end.
+
+%% Perform multiple lookups with lookup_elements for every element in a large table.
+heavy_lookup_elements(Config) when is_list(Config) ->
+    repeat_for_opts_all_set_table_types(fun heavy_lookup_elements_do/1).
+
+heavy_lookup_elements_do(Opts) ->
+    EtsMem = etsmem(),
+    KeyRange = 7000,
+    Tab = ets_new(foobar_table, [{keypos, 2} | Opts], KeyRange),
+    ok = fill_tab2(Tab, 0, KeyRange),
+    %% lookup_elements on ALL elements 50 times with multiple positions
+    Laps = 50 div syrup_factor(),
+    _ = [do_lookup_elements(Tab, KeyRange-1, 1) || _ <- lists:seq(1, Laps)],
+    true = ets:delete(Tab),
+    verify_etsmem(EtsMem).
+
+do_lookup_elements(_Tab, 0, _) -> ok;
+do_lookup_elements(Tab, N, M) ->
+    %% Build a list of positions from 1 to M
+    Positions = lists:seq(1, M),
+    case catch ets:lookup_elements(Tab, N, Positions) of
+	{'EXIT', {badarg, _}} ->
+	    case M of
+		1 -> ct:fail("Set #~p reported as empty. Not valid.",
+			     [N]),
+		     exit('Invalid lookup_elements');
+		_ -> do_lookup_elements(Tab, N-1, 1)
+	    end;
+	Result when is_tuple(Result) ->
+	    %% Verify the tuple has the right size
+	    M = tuple_size(Result),
+	    do_lookup_elements(Tab, N, M+1)
     end.
 
 

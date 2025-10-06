@@ -427,6 +427,9 @@ static int db_member_tree(DbTable *tbl, Eterm key, Eterm *ret);
 static int db_get_element_tree(Process *p, DbTable *tbl, 
 			       Eterm key,int ndex,
 			       Eterm *ret);
+static int db_get_elements_tree(Process *p, DbTable *tbl,
+                                Eterm key, int* indices,
+                                int indices_len, Eterm *ret);
 static int db_erase_tree(DbTable *tbl, Eterm key, Eterm *ret);
 static int db_erase_object_tree(DbTable *tbl, Eterm object,Eterm *ret);
 static int db_slot_tree(Process *p, DbTable *tbl, 
@@ -507,6 +510,7 @@ DbTableMethod db_tree =
     db_put_tree,
     db_get_tree,
     db_get_element_tree,
+    db_get_elements_tree,
     db_member_tree,
     db_erase_tree,
     db_erase_object_tree,
@@ -1096,6 +1100,56 @@ static int db_get_element_tree(Process *p, DbTable *tbl,
     DbTableTree *tb = &tbl->tree;
     return db_get_element_tree_common(p, &tb->common, tb->root, key,
                                       ndex, ret, tb);
+}
+
+int db_get_elements_tree_common(Process *p, DbTableCommon *tb, TreeDbTerm *root, Eterm key,
+                                int* indices, int indices_len, Eterm *ret,
+                                DbTableTree *stack_container)
+{
+    TreeDbTerm *this;
+    Eterm *hp;
+    Eterm *tpl_hp;
+    int i;
+    Uint arity;
+    
+    this = find_node(tb, root, key, stack_container);
+    if (this == NULL) {
+	return DB_ERROR_BADKEY;
+    }
+    
+    arity = arityval(this->dbterm.tpl[0]);
+    
+    /* Verify all positions are valid */
+    for (i = 0; i < indices_len; i++) {
+	if (indices[i] > arity) {
+	    return DB_ERROR_BADPARAM;
+	}
+    }
+    
+    /* Allocate space for tuple */
+    hp = HAlloc(p, indices_len + 1);
+    tpl_hp = hp;
+    *ret = make_tuple(tpl_hp);
+    *tpl_hp++ = make_arityval(indices_len);
+    
+    /* Copy each element - db_copy_element_from_ets manages its own heap */
+    for (i = 0; i < indices_len; i++) {
+	Eterm *elem_hp = NULL;
+	Eterm elem_copy = db_copy_element_from_ets(tb, p,
+	    &this->dbterm, indices[i], &elem_hp, 0);
+	*tpl_hp++ = elem_copy;
+    }
+    
+    return DB_ERROR_NONE;
+}
+
+static int db_get_elements_tree(Process *p, DbTable *tbl,
+                                Eterm key, int* indices,
+                                int indices_len, Eterm *ret)
+{
+    DbTableTree *tb = &tbl->tree;
+    return db_get_elements_tree_common(p, &tb->common, tb->root, key,
+                                       indices, indices_len, ret, tb);
 }
 
 int db_erase_tree_common(DbTable *tbl, TreeDbTerm **root, Eterm key, Eterm *ret,

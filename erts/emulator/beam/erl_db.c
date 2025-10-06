@@ -2924,6 +2924,171 @@ BIF_RETTYPE ets_lookup_element_4(BIF_ALIST_4)
 }
 
 /*
+** Get elements from a term
+** ets_lookup_elements_3(Tab, Key, Positions)
+** return a tuple with the elements at the given positions
+*/
+BIF_RETTYPE ets_lookup_elements_3(BIF_ALIST_3)
+{
+    DbTable* tb;
+    int cret;
+    Eterm ret;
+    Eterm positions_list;
+    Eterm list;
+    int* indices;
+    int indices_len;
+    int i;
+
+    CHECK_TABLES();
+
+    DB_BIF_GET_TABLE(tb, DB_READ, LCK_READ, BIF_ets_lookup_elements_3);
+
+    positions_list = BIF_ARG_3;
+    
+    /* Validate and count the positions list */
+    if (is_not_list(positions_list) && is_not_nil(positions_list)) {
+        db_unlock(tb, LCK_READ);
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    
+    /* Count list length and validate elements */
+    indices_len = 0;
+    list = positions_list;
+    while (is_list(list)) {
+        Eterm* cell = list_val(list);
+        Eterm pos = CAR(cell);
+        if (is_not_small(pos) || signed_val(pos) < 1) {
+            db_unlock(tb, LCK_READ);
+            BIF_ERROR(BIF_P, BADARG);
+        }
+        indices_len++;
+        list = CDR(cell);
+    }
+    
+    if (is_not_nil(list)) {
+        db_unlock(tb, LCK_READ);
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    
+    if (indices_len == 0) {
+        db_unlock(tb, LCK_READ);
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    
+    /* Allocate array for indices */
+    indices = (int*)erts_alloc(ERTS_ALC_T_TMP, indices_len * sizeof(int));
+    
+    /* Convert list to array */
+    list = positions_list;
+    i = 0;
+    while (is_list(list)) {
+        Eterm* cell = list_val(list);
+        indices[i++] = (int)signed_val(CAR(cell));
+        list = CDR(cell);
+    }
+    
+    cret = tb->common.meth->db_get_elements(BIF_P, tb,
+                                            BIF_ARG_2, indices,
+                                            indices_len, &ret);
+    erts_free(ERTS_ALC_T_TMP, indices);
+    db_unlock(tb, LCK_READ);
+    
+    switch (cret) {
+    case DB_ERROR_NONE:
+        BIF_RET(ret);
+    case DB_ERROR_SYSRES:
+        BIF_ERROR(BIF_P, SYSTEM_LIMIT);
+    case DB_ERROR_BADKEY:
+        BIF_P->fvalue = EXI_BAD_KEY;
+        BIF_ERROR(BIF_P, BADARG | EXF_HAS_EXT_INFO);
+    default:
+        BIF_ERROR(BIF_P, BADARG);
+    }
+}
+
+/*
+** Get elements from a term
+** ets_lookup_elements_4(Tab, Key, Positions, Default)
+** return a tuple with the elements at the given positions or Default if key not found
+*/
+BIF_RETTYPE ets_lookup_elements_4(BIF_ALIST_4)
+{
+    DbTable* tb;
+    int cret;
+    Eterm ret;
+    Eterm positions_list;
+    Eterm list;
+    int* indices;
+    int indices_len;
+    int i;
+
+    CHECK_TABLES();
+
+    DB_BIF_GET_TABLE(tb, DB_READ, LCK_READ, BIF_ets_lookup_elements_4);
+
+    positions_list = BIF_ARG_3;
+    
+    /* Validate and count the positions list */
+    if (is_not_list(positions_list) && is_not_nil(positions_list)) {
+        db_unlock(tb, LCK_READ);
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    
+    /* Count list length and validate elements */
+    indices_len = 0;
+    list = positions_list;
+    while (is_list(list)) {
+        Eterm* cell = list_val(list);
+        Eterm pos = CAR(cell);
+        if (is_not_small(pos) || signed_val(pos) < 1) {
+            db_unlock(tb, LCK_READ);
+            BIF_ERROR(BIF_P, BADARG);
+        }
+        indices_len++;
+        list = CDR(cell);
+    }
+    
+    if (is_not_nil(list)) {
+        db_unlock(tb, LCK_READ);
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    
+    if (indices_len == 0) {
+        db_unlock(tb, LCK_READ);
+        BIF_ERROR(BIF_P, BADARG);
+    }
+    
+    /* Allocate array for indices */
+    indices = (int*)erts_alloc(ERTS_ALC_T_TMP, indices_len * sizeof(int));
+    
+    /* Convert list to array */
+    list = positions_list;
+    i = 0;
+    while (is_list(list)) {
+        Eterm* cell = list_val(list);
+        indices[i++] = (int)signed_val(CAR(cell));
+        list = CDR(cell);
+    }
+    
+    cret = tb->common.meth->db_get_elements(BIF_P, tb,
+                                            BIF_ARG_2, indices,
+                                            indices_len, &ret);
+    erts_free(ERTS_ALC_T_TMP, indices);
+    db_unlock(tb, LCK_READ);
+    
+    switch (cret) {
+        case DB_ERROR_NONE:
+            BIF_RET(ret);
+        case DB_ERROR_BADKEY:
+            BIF_RET(BIF_ARG_4);
+        case DB_ERROR_SYSRES:
+            BIF_ERROR(BIF_P, SYSTEM_LIMIT);
+        default:
+            BIF_ERROR(BIF_P, BADARG);
+    }
+}
+
+/*
  * BIF to erase a whole table and release all memory it holds
  */
 BIF_RETTYPE ets_delete_1(BIF_ALIST_1)

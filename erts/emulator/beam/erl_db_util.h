@@ -151,6 +151,12 @@ typedef struct db_table_method
 			  Eterm key, 
 			  int index, 
 			  Eterm* ret);
+    int (*db_get_elements)(Process* p,
+                           DbTable* tb, /* [in out] */
+                           Eterm key,
+                           int* indices,
+                           int indices_len,
+                           Eterm* ret);
     int (*db_member)(DbTable* tb, /* [in out] */ 
 		     Eterm key, 
 		     Eterm* ret);
