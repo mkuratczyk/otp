@@ -451,12 +451,18 @@ handle_call({negotiate_protocol, Mon, Version, Protocols}, From, State)
 
 %% Local request to negotiate with other monitors (nodes).
 handle_call({negotiate_protocol, Nodes}, From, State) ->
-    case mnesia_lib:intersect(State#state.going_down, Nodes) of
-	[] ->
-	    spawn_link(?MODULE, negotiate_protocol_impl, [Nodes, From]),
-	    {noreply, State#state{connecting={From,Nodes}}};
-	_ ->  %% Cannot connect now, still processing mnesia down
-	    {reply, busy, State}
+    case State#state.connecting of
+        undefined ->
+            case mnesia_lib:intersect(State#state.going_down, Nodes) of
+                [] ->
+                    spawn_link(?MODULE, negotiate_protocol_impl, [Nodes, From]),
+                    {noreply, State#state{connecting={From,Nodes}}};
+                _ ->  %% Cannot connect now, still processing mnesia down
+                    {reply, busy, State}
+            end;
+        _ ->
+            Mq = State#state.mq ++ [{call, From, {negotiate_protocol, Nodes}}],
+            {noreply, State#state{mq = Mq}}
     end;
 
 handle_call(init, _From, State) ->
